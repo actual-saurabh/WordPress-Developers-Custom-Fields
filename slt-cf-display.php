@@ -83,9 +83,6 @@ function slt_cf_add_attachment_fields( $form_fields, $post ) {
 ***************************************************************************/
 function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 	global $slt_custom_fields;
-	static $date_output = false;
-	static $time_output = false;
-	static $datetime_output = false;
 
 	// Initialize
 	switch ( $request_type ) {
@@ -108,10 +105,40 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 	// Description
 	if ( $slt_custom_fields['boxes'][ $box_key ][ 'description' ] )
 		echo '<p>' . $slt_custom_fields['boxes'][ $box_key ][ 'description' ] . '</p>';
-		
+	
+	// Loop through fieldgroups for this box
+	foreach ( $slt_custom_fields['boxes'][ $box_key ]['fieldgroups'] as $fieldgroups ) {
+		echo '<div id="'.$fieldgroups['id'].'" class="fieldgroups">';
+		echo '<h4>'.$fieldgroups['title'].'</h4>';
+		echo '<p>'.$fieldgroups['description'].'</p>';
+		slt_cf_single_field_display($fieldgroups['fields'],$object, $box_key, $request_type,$fieldgroups);
+		echo '</div>';
+	}	
 	// Loop through fields for this box
-	foreach ( $slt_custom_fields['boxes'][ $box_key ]['fields'] as $field ) {
-		$field_name = slt_cf_prefix( $slt_custom_fields['boxes'][ $box_key ]['type'] ) . $field['name'];
+	slt_cf_single_field_display($slt_custom_fields['boxes'][$box_key]['fields'],$object, $box_key, $request_type,'');
+	
+	// Round off any markup
+	if ( $request_type == 'user')
+		echo '</table>';
+	
+}
+
+
+function slt_cf_single_field_display($fields,$object, $box_key, $request_type,$fieldgroups){
+	global $slt_custom_fields;
+	static $date_output = false;
+	static $time_output = false;
+	static $datetime_output = false;
+	foreach ( $fields as $field ) {
+		if (isset($fieldgroups)&&$fieldgroups!=''){
+			//These will be in the form of an array for cloning, we can also hook jquery validation to clones
+			$field_name = slt_cf_prefix( $slt_custom_fields['boxes'][ $box_key ]['type'] ) . $fieldgroups['id'].'['.$field['name'].']';
+		}else{
+			$field_name = slt_cf_prefix( $slt_custom_fields['boxes'][ $box_key ]['type'] ) . $field['name'];
+		}
+		//we differentiate ids and names this time so that we can clone
+		$field_id= slt_cf_prefix( $slt_custom_fields['boxes'][ $box_key ]['type'] ).$fieldgroups['id'].$field['name'];
+
 		
 		// Skip fields not allowed in this scope
 		if ( $field['type'] == 'file' && $request_type == 'user' )
@@ -182,7 +209,6 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 		/*if ( $field['cloning'] ) {
 			$after_input = '<p class="slt-cf-clone-field"><a href="#" class="button">' . __( "Clone field", 'slt-custom-fields' ) . '</a></p>' . $after_input;
 		}*/
-		
 		// Description
 		$field_description = '';
 		if ( $field['type'] == 'textile' ) {
@@ -210,6 +236,7 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 		if ( $field['description'] )
 			$field_description .= '<p class="description"><i>' . $field['description'] . '</i></p>';
 		
+		
 		// Which type of field?
 		switch ( $field['type'] ) {
 
@@ -217,7 +244,7 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 				/* Single checkbox
 				*****************************************************************/
 				// Input
-				$input = $before_input . '<input type="checkbox" name="' . $field_name . '" id="' . $field_name . '" value="1"';
+				$input = $before_input . '<input type="checkbox" name="' . $field_name . '" id="' . $field_id . '" value="1"';
 				if ( $field_value )
 					$input .= ' checked="checked"';
 				$input .=  ' />' . $after_input;
@@ -253,7 +280,7 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 					foreach ( $field['options'] as $key => $value ) {
 						echo '<div class="' . implode( ' ', $multi_field_classes ) . '" style="' . implode( ';', $multi_field_styles ) . '">';
 						// Input
-						echo '<input type="checkbox" name="' . $field_name . '_' . $value . '" id="' . $field_name . '_' . $value . '" value="yes"';
+						echo '<input type="checkbox" name="' . $field_name . '_' . $value . '" id="' . $field_id . '_' . $value . '" value="yes"';
 						if ( is_array( $field_value ) && in_array( $value, $field_value )  )
 							echo ' checked="checked"';
 						echo ' />';
@@ -289,7 +316,7 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 					foreach ( $field['options'] as $key => $value ) {
 						echo '<div class="' . implode( ' ', $multi_field_classes ) . '" style="' . implode( ';', $multi_field_styles ) . '">';
 						// Input
-						echo '<input type="radio" name="' . $field_name . '" id="' . $field_name . '_' . $value . '" value="' . $value . '"';
+						echo '<input type="radio" name="' . $field_name . '" id="' . $field_id . '_' . $value . '" value="' . $value . '"';
 						if ( $field_value == $value )
 							echo ' checked="checked"';
 						echo ' />';
@@ -316,7 +343,7 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 				echo $before_input;
 				// Make sure textarea isn't output for WYSIWYG for 3.3 and above, wp_editor handles that
 				if ( $field['type'] != 'wysiwyg' || ! SLT_CF_WP_IS_GTE_3_3 ) {
-					echo '<textarea name="' . $field_name . '" id="' . $field_name . '" columns="50" rows="5" style="' . implode( ';', $input_styles ) . '" class="' . implode( ' ', $input_classes ) . '"';
+					echo '<textarea name="' . $field_name . '" id="' . $field_id . '" columns="50" rows="5" style="' . implode( ';', $input_styles ) . '" class="' . implode( ' ', $input_classes ) . '"';
 					// Character counter JS
 					if ( $field['type'] != "wysiwyg" && isset( $field['charcounter'] ) && $field['charcounter'] ) echo ' onkeyup="document.getElementById(\'' . $field_name . '-charcounter\').value=this.value.length;"';
 					// Value
@@ -371,7 +398,7 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 				echo $before_label . '<label for="' . $field_name .'" class="' . implode( ' ', $label_classes ) . '">' . $field['label'] . '</label>' . $after_label;
 				// Input
 				echo $before_input;
-				slt_cf_file_select_button( $field_name, $field_value, $field['file_button_label'], $field['preview_size'], $field['file_removeable'], $field['file_attach_to_post'] );
+				slt_cf_file_select_button( $field_name, $field_id,$field_value, $field['file_button_label'], $field['preview_size'], $field['file_removeable'], $field['file_attach_to_post'] );
 				echo $field_description;
 				echo $after_input;
 				break;
@@ -398,13 +425,13 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 				// Input
 				$input_classes[] = 'slt-cf-date';
 				echo $before_input;
-				echo '<input type="text" name="' . $field_name . '" id="' . $field_name . '" value="' . htmlspecialchars( $field_value ) . '" style="' . implode( ';', $input_styles ) . '" class="' . implode( ' ', $input_classes ) . '" />';
+				echo '<input type="text" name="' . $field_name . '" id="' . $field_id . '" value="' . htmlspecialchars( $field_value ) . '" style="' . implode( ';', $input_styles ) . '" class="' . implode( ' ', $input_classes ) . '" />';
 				echo ' <i>' . str_replace( "y", "yy", $field['datepicker_format'] ) . '</i>';
 				if ( ! $date_output ) {
 					?>
 					<script type="text/javascript">
 						jQuery( document ).ready( function($) {
-							$( 'input.slt-cf-date' ).datepicker({ dateFormat: '<?php echo $field['datepicker_format']; ?>' });
+							$( 'input.slt-cf-date' ).datepicker({ dateFormat: '<?php echo(($field['datepicker_format']!='')?$field['datepicker_format']:'dd/mm/yy'); ?>' });
 						});
 					</script>
 					<?php
@@ -422,15 +449,15 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 				// Input
 				$input_classes[] = 'slt-cf-time';
 				echo $before_input;
-				echo '<input type="text" name="' . $field_name . '" id="' . $field_name . '" value="' . htmlspecialchars( $field_value ) . '" style="' . implode( ';', $input_styles ) . '" class="' . implode( ' ', $input_classes ) . '" />';
+				echo '<input type="text" name="' . $field_name . '" id="' . $field_id . '" value="' . htmlspecialchars( $field_value ) . '" style="' . implode( ';', $input_styles ) . '" class="' . implode( ' ', $input_classes ) . '" />';
 				echo ' <i>' . $field['timepicker_format'] . '</i>';
 				if ( ! $time_output ) {
 					?>
 					<script type="text/javascript">
 						jQuery( document ).ready( function($) {
 							$( 'input.slt-cf-time' ).timepicker({
-								timeFormat: '<?php echo $field['timepicker_format']; ?>',
-								ampm: '<?php echo $field['timepicker_ampm']; ?>'
+								timeFormat: '<?php echo(($field['timepicker_format']!='')?$field['timepicker_format']:'hh:mm tt'); ?>',
+								ampm: '<?php echo(($field['timepicker_ampm']!='')?$field['timepicker_ampm']:true); ?>'
 							});
 						});
 					</script>
@@ -449,15 +476,15 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 				// Input
 				$input_classes[] = 'slt-cf-datetime';
 				echo $before_input;
-				echo '<input type="text" name="' . $field_name . '" id="' . $field_name . '" value="' . htmlspecialchars( $field_value ) . '" style="' . implode( ';', $input_styles ) . '" class="' . implode( ' ', $input_classes ) . '" />';
+				echo '<input type="text" name="' . $field_name . '" id="' . $field_id . '" value="' . htmlspecialchars( $field_value ) . '" style="' . implode( ';', $input_styles ) . '" class="' . implode( ' ', $input_classes ) . '" />';
 				if ( ! $datetime_output ) {
 					?>
 					<script type="text/javascript">
 						jQuery( document ).ready( function($) {
 							$( 'input.slt-cf-datetime' ).datetimepicker({
-								dateFormat: '<?php echo $field['datepicker_format']; ?>',
-								timeFormat: '<?php echo $field['timepicker_format']; ?>',
-								ampm: '<?php echo $field['timepicker_ampm']; ?>'
+								dateFormat: '<?php echo(($field['datepicker_format']!='')?$field['datepicker_format']:'dd/mm/yy'); ?>',
+								timeFormat: '<?php echo(($field['timepicker_format']!='')?$field['timepicker_format']:'hh:mm tt'); ?>',
+								ampm: '<?php echo(($field['timepicker_ampm']!='')?$field['timepicker_ampm']:true); ?>'
 								});
 						});
 					</script>
@@ -476,8 +503,8 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 				echo $before_input . $field_description . $after_input;
 				break;
 			}
-						
-			default: {
+			//changed this, because anyways we are adding the type text to an un-type-d field
+			case 'text':{
 				/* Plain text field
 				*****************************************************************/
 				// Label
@@ -488,6 +515,29 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 				slt_cf_input_text( $field_name, $field_value, $field['input_prefix'], $field['input_suffix'], $input_styles, $input_classes );
 				echo $field_description;
 				echo $after_input;
+				break;
+			}	
+			//now we can hook everything else into default;		
+			default: {
+				//rewrite the whole display function for including additional fields
+				
+				//add necessary values to an array and pass it to the filter
+				$cust_display_array=array(
+				'before_label'	=>		$before_label,
+			    'after_label'	=>	    $after_label,
+			    'before_input'	=>	    $before_input,
+			    'after_input'	=>	    $after_input,
+			    'field'			=>	    $field,
+			    'field_name'	=>	    $field_name,
+			    'field_id'		=>	    $field_id,
+			    'field_classes'	=>	    $field_classes,
+			    'label_classes'	=>	    $label_classes,
+			    'input_classes'	=>	    $input_classes,
+			    'input_styles'	=>	    $input_styles,
+			    'legend_classes'=>	    $legend_classes
+				);
+				//hook our custom display functions here
+				return apply_filters('slt_cf_custom_display_filter',$cust_display_array);
 				break;
 			}
 						
@@ -506,22 +556,17 @@ function slt_cf_display_box( $object, $custom_data, $request_type = 'post' ) {
 		}
 
 	} // Fields foreach
-	
-	// Round off any markup
-	if ( $request_type == 'user')
-		echo '</table>';
-	
 }
 
 /* Field output functions
 ***************************************************************************/
 
 // Plain text
-function slt_cf_input_text( $field_name, $field_value = '', $prefix = '', $suffix = '', $input_styles = array(), $input_classes = array(), $echo = true ) {
+function slt_cf_input_text( $field_name,$field_id, $field_value = '', $prefix = '', $suffix = '', $input_styles = array(), $input_classes = array(), $echo = true ) {
 	$output = '';
 	if ( $prefix )
 		$output .= $prefix . ' ';
-	$output .= '<input type="text" name="' . esc_attr( $field_name ) . '" id="' . esc_attr( $field_name ) . '" value="' . esc_html( $field_value ) . '" style="' . esc_attr( implode( ';', $input_styles ) ) . '" class="' . esc_attr( implode( ' ', $input_classes ) ) . '" />';
+	$output .= '<input type="text" name="' . esc_attr( $field_name ) . '" id="' . esc_attr( $field_id ) . '" value="' . esc_html( $field_value ) . '" style="' . esc_attr( implode( ';', $input_styles ) ) . '" class="' . esc_attr( implode( ' ', $input_classes ) ) . '" />';
 	if ( $suffix )
 		$output .= ' ' . $suffix;
 	if ( $echo )
@@ -531,7 +576,7 @@ function slt_cf_input_text( $field_name, $field_value = '', $prefix = '', $suffi
 }
 
 // Select
-function slt_cf_input_select( $field_name, $field_value, $prefix = '', $suffix = '', $input_styles = array(), $input_classes = array(), $echo = true, $options, $multiple = false, $empty_option = false, $empty_option_text = '', $no_options = '' ) {
+function slt_cf_input_select( $field_name,$field_id, $field_value, $prefix = '', $suffix = '', $input_styles = array(), $input_classes = array(), $echo = true, $options, $multiple = false, $empty_option = false, $empty_option_text = '', $no_options = '' ) {
 	$output = '';
 
 	// No options?
@@ -549,7 +594,7 @@ function slt_cf_input_select( $field_name, $field_value, $prefix = '', $suffix =
 		$output .= '<select name="' . esc_attr( $field_name );
 		if ( $multiple )
 			$output .= '[]';
-		$output .= '" id="' . esc_attr( $field_name ) . '" style="' . esc_attr( implode( ';', $input_styles ) ) . '" class="' . esc_attr( implode( ' ', $input_classes ) ) . '"';
+		$output .= '" id="' . esc_attr( $field_id ) . '" style="' . esc_attr( implode( ';', $input_styles ) ) . '" class="' . esc_attr( implode( ' ', $input_classes ) ) . '"';
 		if ( $multiple ) {
 			$size = ( count( $options ) < 15 ) ? count( $options ) : 15;
 			$output .= ' multiple="multiple" size="' . esc_attr( $size ) . '"';							

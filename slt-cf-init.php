@@ -1,4 +1,12 @@
 <?php
+/* Some notes for my understanding
+ * the inheritence of defaults
+ * First Way: Box->FieldGroup->Field
+ * Or/And
+ * Second Way: standard format->field format->field
+ * we should define the standard format and initialise empty arrays for checks that will be populated later!
+ * Scope, role and capability defaults must be inherited the first way
+ * Values, required, etc must be inherited the second way
 
 /* Initialize
 ***************************************************************************************/
@@ -116,9 +124,138 @@ function slt_cf_admin_menus() {
 	add_submenu_page( 'tools.php', SLT_CF_TITLE . ' ' . __( 'database tools', 'slt-custom-fields' ), __( 'Custom Fields data', 'slt-custom-fields' ), 'update_core', 'slt_cf_data_tools', 'slt_cf_database_tools_screen' );
 }
 
+/* Initialize field types
+***************************************************************************************/
+function slt_cf_init_fieldtypes(){
+	//inbuilt types can be defined here, or using the filter at the end!	
+	$fields=array(
+		'text'=>array(
+			'default'=>'',
+			'attributes'=>array(			
+			)
+		),
+		'textarea'=>array(
+			'default'=>'',
+			'attributes'=>array(
+			)
+		),
+		'textile'=>array(
+			'default'=>'26/12/1981',//send me a birthday wish at saurabh at yapapaya dot com ;)
+			'attributes'=>array(
+				'datepicker_format'=>array(
+					'default'=>'dd/mm/yyyy',
+					'required'=>false,
+					'validtype'=>'string'
+				)
+			)
+		),
+		'wysiwyg'=>array(
+			'default'=>'26/12/1981',//send me a birthday wish at saurabh at yapapaya dot com ;)
+			'attributes'=>array(
+				'datepicker_format'=>array(
+					'default'=>'dd/mm/yyyy',
+					'required'=>false,
+					'validtype'=>'string'
+				)
+			)
+		),
+		'date'=>array(
+			'default'=>'26/12/1981',//send me a birthday wish at saurabh at yapapaya dot com ;)
+			'attributes'=>array(
+				'datepicker_format'=>array(
+					'default'=>'dd/mm/yyyy',
+					'required'=>false,
+					'validtype'=>'string'
+				)
+			)
+		),
+		'checkbox'=>array(
+			'attributes'=>array(
+				
+			)
+		),
+		'checkboxes'=>array(
+			'default'=>array(),
+			'attributes'=>array(
+				
+			)
+		),
+		'radio'=>array(
+			'attributes'=>array(
+				
+			)
+		),
+		'select'=>array(
+			'default'=>array(),
+			'attributes'=>array(
+				'multiple'=>false
+			)
+		),
+		'notice'=>array(
+			'attributes'=>array(
+				
+			)
+		),
+	);
+	
+	//Now that we have initialised these fields, we give a filter hook here for custom field types
+	$fields=apply_filters('register_new_dc_fields',$fields);
+	
+	//return the fields, so that the initialisation can happen!
+	return $fields;
+	
+}
+/* Initialize file select format
+***************************************************************************************/
+function slt_cf_init_selectfield($fields){
+	//inbuilt types can be defined here, or using the filter at the end!	
+	$selectfield=array(
+		'file'=>array(
+			'default'=>'',
+			'attributes'=>array(
+				'file_button_label'=> array(
+					'default'=>__( "Select file", "slt-custom-fields"),
+					'validtype'=>'string'
+				),
+				'file_removeable'=> array(
+					'default'=>true,
+					'validtype'=>'boolean'
+				),
+				'file_attach_to_post'=> array(
+					'default'=>true,
+					'validtype'=>'boolean'
+				)			
+			)
+		)
+	);
+	return array_merge($fields,$selectfield);
+}
+if (SLT_CF_USE_FILE_SELECT===true){
+	add_filter('register_new_dc_fields','slt_cf_init_selectfield');
+}
+/* Initialize GMAPS
+***************************************************************************************/
+function slt_cf_init_gmapfield($fields){
+	//inbuilt types can be defined here, or using the filter at the end!	
+	$gmapfield=array(
+		'gmap'=>array(
+			'default'=>array(),
+			'attributes'=>array(
+					
+			)
+		)
+	);
+	return array_merge($fields,$gmapfield);
+}
+if (SLT_CF_USE_GMAPS===true){
+	//after fixing gmaps with jquery gMaps3
+	//add_filter('register_new_dc_fields','slt_cf_init_gmapfield');
+}
+
 /* Initialize fields
 ***************************************************************************************/
 function slt_cf_init_fields( $request_type, $scope, $object_id ) {
+	
 	global $slt_custom_fields, $wp_roles, $post, $user_id;
 
 	// Only run once per request
@@ -154,6 +291,7 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 			'context'		=> 'advanced',
 			'priority'		=> 'default',
 			'description'	=> '',
+			'fieldgroups'	=> array(),
 			'fields'		=> array()
 		);
 		$box = array_merge( $box_defaults, $box );
@@ -174,61 +312,97 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 			$box['priority'] = 'high';
 			$box['above_content'] = true;
 		}
+		// Loop through fieldgroups
+		$unset_fields = array();
+		foreach ( $box['fieldgroups'] as $fieldgroup_key => &$fieldgroup ) {
+			
+	
+			// Check if required parameters are present
+			if ( ! slt_cf_required_params( array( 'id', 'title' ), 'fieldgroup', $fieldgroup ) ) {
+				$unset_fields[] = $fieldgroup_key;
+				continue;
+			}
+	
+			// Set defaults
+			$fieldgroup_defaults = array(
+	        	'description'=>'',
+	        	'cloning'	=>true,
+	        	'scope'	=> array( 'posts' ),
+	        	'capabilities'  => array( 'edit_posts' ),
+	        	'fields'=> array()
+			);
+			$fieldgroup = array_merge( $fieldgroup_defaults, $fieldgroup );
+	
+			// Check if parameters are the right types
+			if (
+				! slt_cf_params_type( array( 'id', 'title', 'description' ), 'string', 'box', $box ) ||
+				! slt_cf_params_type( array( 'cloning' ), 'boolean', 'box', $box ) ||
+				! slt_cf_params_type( array( 'fields', 'type' ), 'array', 'box', $box )
+			) {
+				$unset_fieldgroups[] = $fieldgroup_key;
+				continue;
+			}
+			// Process individual fields
+			slc_cf_init_single_field($fieldgroup['fields'],$request_type, $scope, $object_id, $fieldgroup,$fieldgroup_key, $box,$box_key );
+			
+		}// Fieldgroups foreach
+		
+		// unset any invalid fieldgroups
+		foreach ( array_unique( $unset_fields ) as $field_key )
+			unset( $slt_custom_fields['boxes'][ $box_key ]['fieldgroups'][ $fieldgroup_key ] );
 
+		// Process fields without fieldgroups within the box
+		slc_cf_init_single_field($box['fields'],$request_type, $scope, $object_id, '',null, $box,$box_key  );
+
+	} // Boxes foreach
+
+	// Unset any invalid boxes
+	$num_boxes = count( $slt_custom_fields['boxes'] );
+	for ( $box_key = 0; $box_key < $num_boxes; $box_key++ ) {
+		if ( count( $slt_custom_fields['boxes'][ $box_key ]['fields'] ) == 0 || in_array( $box_key, $unset_boxes ) )
+			unset( $slt_custom_fields['boxes'][ $box_key ] );
+	}
+
+	// Post-processing of boxes
+	$slt_custom_fields['boxes'] = apply_filters( 'slt_cf_init_boxes', $slt_custom_fields['boxes'] );
+
+}
+
+//Now process each field from the fieldgroup or directly from the box
+function slc_cf_init_single_field($fields,$request_type, $scope, $object_id, $fieldgroup='',$fieldgroup_key=null, $box,$box_key ){
+	global $slt_custom_fields, $wp_roles, $post, $user_id;
+	
+	$fieldformats=slt_cf_init_fieldtypes();
+	
 		// Loop through fields
 		$unset_fields = array();
-		foreach ( $box['fields'] as $field_key => &$field ) {
-
-			// Any defaults that need setting early
+		foreach ( $fields as $field_key => &$field ) {
+			
+						
+			// Set the default to text, if not set
 			if ( ! array_key_exists( 'type', $field ) )
 				$field['type'] = 'text';
-
-			// Check if required parameters are present
-			$required_params = array( 'name' );
-			if ( $field['type'] != 'notice' )
-				$required_params[] = 'label';
-			if ( array_key_exists( 'options_type', $field ) && $field['options_type'] == 'terms' )
-				$required_params[] = 'options_query';
-			if ( ! slt_cf_required_params( $required_params, 'field', $field ) ) {
-				$unset_fields[] = $field_key;
-				continue;
-			}
-
-			// If the name is the same as the box id, this can cause problems
-			if ( $field['name'] == $box['id'] ) {
-				trigger_error( '<b>' . SLT_CF_TITLE . ':</b> Box <b>' . $box['id'] . '</b> has a field with the same name as the box id, which can cause problems.', E_USER_WARNING );
-				$unset_fields[] = $field_key;
-				continue;
-			}
-
-			// Using Google Maps?
-			if ( $field['type'] == 'gmap' && ! SLT_CF_USE_GMAPS ) {
-				trigger_error( '<b>' . SLT_CF_TITLE . ':</b> The field <b>' . $field['name'] . '</b> is a <code>gmap</code> type field, but <code>SLT_CF_USE_GMAPS</code> is set to disable Google Maps.', E_USER_WARNING );
-				$unset_fields[] = $field_key;
-				continue;
-			}
-
-			// Using File Select?
-			if ( $field['type'] == 'file' && ! SLT_CF_USE_FILE_SELECT ) {
-				trigger_error( '<b>' . SLT_CF_TITLE . ':</b> The field <b>' . $field['name'] . '</b> is a <code>file</code> type field, but <code>SLT_CF_USE_FILE_SELECT</code> is set to disable the file select functionality.', E_USER_WARNING );
-				$unset_fields[] = $field_key;
-				continue;
-			}
-
-			// File field type no longer needs the File Select plugin
-			if ( $field['type'] == 'file' && function_exists( 'slt_fs_button' )  )
-				trigger_error( '<b>' . SLT_CF_TITLE . ':</b> File upload fields no longer needs the SLT File Select plugin - you can remove it if you want! If you use that plugin\'s functionality elsewhere, you can now just call the functions provided by this Custom Fields plugin.', E_USER_NOTICE );
-
-			// Set defaults
+			
+			//initially we reset all defaults for checks
+			$required_params= array();
+			$sltcheckbool = array();
+			$sltcheckstr = array();
+			$sltcheckarr = array();
+			$sltcheckint = array();
+			$fielddefaults = array();
+			
+			//Then we know some parameters are necessary, irrespective of the field, so we set them
+			//viz. type and name, the rest are specific to each field
+			
+			$required_params[]='name';
+			
+			// Set standard defaults
 			$field_defaults = array(
 				'cloning'					=> false,
 				'label'						=> '',
 				'scope'						=> array(),
 				'label_layout'				=> 'block',
 				'hide_label'				=> false,
-				'file_button_label'			=> __( "Select file", "slt-custom-fields" ),
-				'file_removeable'			=> true,
-				'file_attach_to_post'		=> true,
 				'input_prefix'				=> '',
 				'input_suffix'				=> '',
 				'description'				=> '',
@@ -252,14 +426,124 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 				'wysiwyg_settings'			=> array(), /* Defaults are dealt with below */
 				'preview_size'				=> 'medium',
 				'group_options'				=> false,
-				'datepicker_format'			=> $slt_custom_fields['datepicker_default_format'],
-				'timepicker_format'			=> $slt_custom_fields['timepicker_default_format'],
-				'timepicker_ampm'			=> $slt_custom_fields['timepicker_default_ampm'],
+				//'datepicker_format'			=> $slt_custom_fields['datepicker_default_format'],//not needed anymore
 				'location_marker'			=> true,
 				'gmap_type'					=> 'roadmap',
 				'edit_on_profile'			=> false
 			);
-			// Defaults dependent on request type
+			
+			$sltcheckbool = array();
+			$sltcheckstr = array();
+			$sltcheckarr = array();
+			$sltcheckint = array();
+			
+			//Get fieldformat with the same type
+			$fieldformat	=	$fieldformats[$field['type']];
+			
+			//Get the format's value defaults, especially useful for gmaps and stuff
+			//loop through field defaults and if empty, update with format defaults
+			foreach($field['default'] as $default_key=>&$default){
+				if(!$default){
+					$field['default'][$default_key] =  $fieldformat['default'][$default_key];
+				}
+			}
+			
+			//loop through the attributes
+			foreach($fieldformat['attributes'] as $attr=>&$attr_property){
+				//, compare with field attributes, set defaults and type checks
+				//set the corresponding attr of the field, with defaults, if empty
+				if(!isset($field[$attr])){
+					//set necessary attributes of the field
+					//if attr is required, then add it to required parameters
+					if($attr_property['required']){
+						$required_params[]=$attr;
+					}
+					//take the defaults and push them in the field_defaults array
+					if(!$field['default']){
+						$field_defaults[$attr]=$attr_property['default'];
+					}else{
+						$field_defaults[$attr]=$field['default'];
+					}
+					//check the validation that the attribute requires, integer, string, boolean or array
+					if(isset($attr_property['validtype'])&&!empty($attr_property['validtype'])){
+						switch ($attr_property['validtype']){
+							case 'string':
+								$sltcheckstr[]= $attr;
+								break;
+							case 'boolean':
+								$sltcheckbool[]= $attr;
+								break;
+							case 'integer':
+								$sltcheckint[]= $attr;
+								break;
+							case 'array':
+								$sltcheckarr[]= $attr;
+								break;
+						}
+					}
+				}
+				
+			}
+
+			
+			// Check if required parameters are present
+			//$required_params[] = array( 'name' );
+			
+			if ( $field['type'] != 'notice' )
+				$required_params[] = 'label';
+			if ( array_key_exists( 'options_type', $field ) && $field['options_type'] == 'terms' )
+				$required_params[] = 'options_query';
+			//echo required
+			//print_r($required_params);
+			//remove the field if required_param is missing
+			if ( ! slt_cf_required_params( $required_params, 'field', $field ) ) {
+				$unset_fields[] = $field_key;
+				continue;
+			}
+			
+			//check if this belongs to a fieldgroup
+			if (isset($fieldgroup)&&$fieldgroup!=''){
+				// If the name is the same as fieldgroup id, there can be problems
+				if ( $field['name'] == $fieldgroup['id'] ) {
+					trigger_error( '<b>' . SLT_CF_TITLE . ':</b> Field Group <b>' . $fieldgroup['id'] . '</b> has a field with the same name as itself, which can cause problems.', E_USER_WARNING );
+					$unset_fields[] = $field_key;
+					continue;
+				}
+				
+			}else{
+				// If the name is the same as the box id, this can cause problems
+				if ( $field['name'] == $box['id'] ) {
+					trigger_error( '<b>' . SLT_CF_TITLE . ':</b> Box <b>' . $box['id'] . '</b> has a field with the same name as the box id, which can cause problems.', E_USER_WARNING );
+					$unset_fields[] = $field_key;
+					continue;
+				}
+			}
+			
+
+			// Using Google Maps?
+			if ( $field['type'] == 'gmap' && ! SLT_CF_USE_GMAPS ) {
+				trigger_error( '<b>' . SLT_CF_TITLE . ':</b> The field <b>' . $field['name'] . '</b> is a <code>gmap</code> type field, but <code>SLT_CF_USE_GMAPS</code> is set to disable Google Maps.', E_USER_WARNING );
+				$unset_fields[] = $field_key;
+				continue;
+			}
+	
+			// Using File Select?
+			if ( $field['type'] == 'file' && ! SLT_CF_USE_FILE_SELECT ) {
+				trigger_error( '<b>' . SLT_CF_TITLE . ':</b> The field <b>' . $field['name'] . '</b> is a <code>file</code> type field, but <code>SLT_CF_USE_FILE_SELECT</code> is set to disable the file select functionality.', E_USER_WARNING );
+				$unset_fields[] = $field_key;
+				continue;
+			}
+	
+			// File field type no longer needs the File Select plugin// Legacy load carrying :(
+			if ( $field['type'] == 'file' && function_exists( 'slt_fs_button' )  )
+				trigger_error( '<b>' . SLT_CF_TITLE . ':</b> File upload fields no longer needs the SLT File Select plugin - you can remove it if you want! If you use that plugin\'s functionality elsewhere, you can now just call the functions provided by this Custom Fields plugin.', E_USER_NOTICE );
+			
+			
+			
+			
+			
+			
+			// Common defaults dependent on request type
 			switch ( $request_type ) {
 				case 'post': {
 					$field_defaults['capabilities'] = array( 'edit_posts' );
@@ -281,7 +565,9 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 				}
 			}
 			// Merge passed values with defaults
+			//print_r($field);
 			$field = array_merge( $field_defaults, $field );
+			//print_r($field);
 			// Defaults dependent on options type
 			switch ( $field['options_type'] ) {
 				case 'posts': {
@@ -322,24 +608,32 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 					break;
 				}
 			}
-
+			
+			// Add parameters to respective arrays
+			//some have been removed because they are no longer needed
+			array_push($sltcheckbool,'hide_label', 'multiple', 'exclude_current', 'required', 'group_options', 'autop', 'edit_on_profile' );
+			array_push( $sltcheckstr,'name', 'label', 'type', 'label_layout', 'input_prefix', 'input_suffix', 'description', 'options_type', 'no_options', 'empty_option_text', 'preview_size' );
+			array_push($sltcheckarr,'scope', 'options', 'allowtags', 'options_query', 'capabilities' );
+			array_push($sltcheckint,'width', 'height' );
+			
+			
 			// Check if parameters are the right types
 			if (
-				! slt_cf_params_type( array( 'name', 'label', 'type', 'label_layout', 'file_button_label', 'input_prefix', 'input_suffix', 'description', 'options_type', 'no_options', 'empty_option_text', 'preview_size', 'datepicker_format' ), 'string', 'field', $field ) ||
-				! slt_cf_params_type( array( 'hide_label', 'file_removeable', 'multiple', 'exclude_current', 'required', 'group_options', 'autop', 'edit_on_profile','timepicker_ampm' ), 'boolean', 'field', $field ) ||
-				! slt_cf_params_type( array( 'scope', 'options', 'allowtags', 'options_query', 'capabilities' ), 'array', 'field', $field ) ||
-				! slt_cf_params_type( array( 'width', 'height' ), 'integer', 'field', $field )
+				! slt_cf_params_type( $sltcheckstr, 'string', 'field', $field ) ||
+				! slt_cf_params_type( $sltcheckbool, 'boolean', 'field', $field ) ||
+				! slt_cf_params_type( $sltcheckarr, 'array', 'field', $field ) ||
+				! slt_cf_params_type( $sltcheckint, 'integer', 'field', $field )
 			) {
 				$unset_fields[] = $field_key;
 				continue;
 			}
-
+	
 			// Check scope
 			if ( ! slt_cf_check_scope( $field, $request_type, $scope, $object_id ) ) {
 				$unset_fields[] = $field_key;
 				continue;
 			}
-
+	
 			// Check capability if in admin
 			if ( is_admin() ) {
 				// If object-specific capability check fails
@@ -356,7 +650,7 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 					continue;
 				}
 			}
-
+	
 			// Check uniqueness of field name in scope
 			// ???? Code could be streamlined!
 			$field_name_used = false;
@@ -399,17 +693,17 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 			}
 			if ( $field_name_used )
 				continue;
-
+	
 			/****************************************************************************
 			From this point on, this field is considered as valid for the current request
 			****************************************************************************/
-
+	
 			// Gather dynamic options data?
 			if ( $field['options_type'] != 'static' ) {
-
+	
 				// Check for any placeholder values in the query
 				if ( array_search( '[OBJECT_ID]', $field['options_query'] ) !== false ) {
-
+	
 					// Object ID
 					$object_id = 0;
 					switch ( $field['options_type'] ) {
@@ -428,9 +722,9 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 						array( $object_id ),
 						$field['options_query']
 					);
-
+	
 				} else if ( array_key_exists( 'tax_query', $field['options_query'] ) && $request_type == 'post' ) {
-
+	
 					// Taxonomy term IDs
 					foreach ( $field['options_query']['tax_query'] as &$tax_query ) {
 						if ( is_array( $tax_query ) && array_key_exists( 'terms', $tax_query ) && $tax_query['terms'] == '[TERM_IDS]' && array_key_exists( 'taxonomy', $tax_query ) && taxonomy_exists( $tax_query['taxonomy'] ) ) {
@@ -446,11 +740,11 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 							}
 						}
 					}
-
+	
 				}
-
+	
 				switch ( $field['options_type'] ) {
-
+	
 					case 'posts': {
 						// Get posts
 						if ( ! array_key_exists( 'post_type', $field['options_query'] ) )
@@ -468,7 +762,7 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 						$field['options'] = array();
 						/** @todo Heirarchical post selection
 						if ( $field['hierarchical_options'] && is_string( $field['options_query']['post_type'] ) && is_post_type_hierarchical( $field['options_query']['post_type'] ) ) {
-
+	
 						}
 						*/
 						$current_category = array();
@@ -485,7 +779,7 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 						}
 						break;
 					}
-
+	
 					case 'users': {
 						// Get users
 						$field['options'] = array();
@@ -509,12 +803,12 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 						}
 						break;
 					}
-
+	
 					case 'terms': {
 						// Get terms
 						$args = $field['options_query'];
 						$taxonomies = $args['taxonomies'];
- 						$field['options'] = array();
+						$field['options'] = array();
 						/** @todo Heirarchical post selection
 					 	if ( $field['hierarchical_options'] ) {
 							$field['options_query']['hierarchical'] = true;
@@ -525,34 +819,30 @@ function slt_cf_init_fields( $request_type, $scope, $object_id ) {
 							foreach ( $option_terms as $option_term )
 								$field['options'][$option_term->name] = $option_term->term_id;
 						}
- 						break;
+						break;
 					}
-
+	
 					default: {
 						// Run filter for custom option types
 						$field['options'] = apply_filters( 'slt_cf_populate_options', $field['options'], $request_type, $scope, $object_id, $field );
 						break;
 					}
-
+	
 				}
 			}
 
-		} // Fields foreach
-
-		// Unset any invalid fields
-		foreach ( array_unique( $unset_fields ) as $field_key )
+	} // Fields foreach
+echo('<br />These were unset, array::<br />');
+			print_r($unset_fields);
+echo('<br />::array ends <br />');
+	// Unset any invalid fields
+	foreach ( array_unique( $unset_fields ) as $field_key ){
+		if (isset($fieldgroup)&&$fieldgroup!=''){
+			unset( $slt_custom_fields['boxes'][ $box_key ]['fieldgroups'][ $fieldgroup_key ]['fields'][$field_key] );
+			echo $slt_custom_fields['boxes'][ $box_key ]['fieldgroups'][ $fieldgroup_key ]['fields'][ $field_key ] .'was unset';
+		}else{
 			unset( $slt_custom_fields['boxes'][ $box_key ]['fields'][ $field_key ] );
-
-	} // Boxes foreach
-
-	// Unset any invalid boxes
-	$num_boxes = count( $slt_custom_fields['boxes'] );
-	for ( $box_key = 0; $box_key < $num_boxes; $box_key++ ) {
-		if ( count( $slt_custom_fields['boxes'][ $box_key ]['fields'] ) == 0 || in_array( $box_key, $unset_boxes ) )
-			unset( $slt_custom_fields['boxes'][ $box_key ] );
+			echo $slt_custom_fields['boxes'][ $box_key ]['fields'][ $field_key ] .'was unset';
+		}
 	}
-
-	// Post-processing of boxes
-	$slt_custom_fields['boxes'] = apply_filters( 'slt_cf_init_boxes', $slt_custom_fields['boxes'] );
-
 }
